@@ -1,0 +1,47 @@
+
+name: Daily stock scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 23 * * 1-5'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Run rotating scan
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          SCAN_BATCH_SIZE: 250
+        run: python -m scanner.run
+      - name: Commit scanner output
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/data.json scanner/universe_cache.json
+          git diff --cached --quiet || (git commit -m 'Update daily stock scan' && git push)
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - name: Publish dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4
